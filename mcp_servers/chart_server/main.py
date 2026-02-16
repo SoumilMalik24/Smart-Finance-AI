@@ -1,9 +1,17 @@
 import sys
 import os
+import subprocess
 
 # Ensure local modules are importable in cloud environment
-# where working directory is /app (repo root), not /app/mcp_servers/chart_server_new
+# where working directory is /app (repo root), not /app/mcp_servers/chart_server
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+# Auto-install matplotlib if missing (workaround for FastMCP Cloud builder bug
+# that fails to install dependencies from subdirectory pyproject.toml/requirements.txt)
+try:
+    import matplotlib
+except ImportError:
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "matplotlib"])
 
 from fastmcp import FastMCP
 from logger import setup_logger
