@@ -9,4 +9,5 @@ dependencies = []
 [tool.uv.workspace]
 members = [
     "mcp_servers/math_server",
+    "mcp_servers/investment_server",
 ]

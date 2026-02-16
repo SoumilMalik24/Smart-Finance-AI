@@ -4,6 +4,7 @@ requires-python = ">=3.13"
 
 [manifest]
 members = [
+    "investment-server",
     "math-server",
     "smart-finance-ai",
 ]
@@ -454,6 +455,17 @@ sdist = { url = "https://files.pythonhosted.org/packages/f3/49/3b30cad09e7771a49
 wheels = [
     { url = "https://files.pythonhosted.org/packages/fa/5e/f8e9a1d23b9c20a551a8a02ea3637b4642e22c2626e3a13a9a29cdea99eb/importlib_metadata-8.7.1-py3-none-any.whl", hash = "sha256:5a1f80bf1daa489495071efbb095d75a634cf28a8bc299581244063b53176151", size = 27865, upload-time = "2025-12-21T10:00:18.329Z" },
 ]
+
+[[package]]
+name = "investment-server"
+version = "0.1.0"
+source = { virtual = "mcp_servers/investment_server" }
+dependencies = [
+    { name = "fastmcp" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "fastmcp", specifier = ">=2.14.5" }]
 
 [[package]]
 name = "jaraco-classes"
