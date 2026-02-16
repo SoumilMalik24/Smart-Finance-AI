@@ -4,11 +4,14 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "matplotlib>=3.10.8",
+]
 
 [tool.uv.workspace]
 members = [
     "mcp_servers/math_server",
     "mcp_servers/investment_server",
     "mcp_servers/chart_server",
+    "mcp_servers/chart_server_new",
 ]
