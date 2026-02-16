@@ -1,0 +1,2 @@
+from .line_chart import generate_investment_growth_chart
+from .comparison_chart import generate_comparison_chart

@@ -10,4 +10,5 @@ dependencies = []
 members = [
     "mcp_servers/math_server",
     "mcp_servers/investment_server",
+    "mcp_servers/chart_server",
 ]
