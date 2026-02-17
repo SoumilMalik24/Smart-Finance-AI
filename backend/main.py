@@ -1,6 +1,7 @@
 import json
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware  
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from langchain_openai import ChatOpenAI
@@ -33,6 +34,14 @@ async def lifespan(app):
 
 app = FastAPI(title="Financial Orchestrator AI", lifespan=lifespan)
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows all origins (simplest for dev)
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 
 class ChatRequest(BaseModel):
     session_id: str
@@ -40,14 +49,12 @@ class ChatRequest(BaseModel):
 
 
 async def event_generator(session_id: str, user_input: str):
+    MAX_TOOL_ROUNDS = 5  # Safety limit to prevent infinite loops
 
     try:
         # 1️⃣ Add user message to session
         user_msg = HumanMessage(content=user_input)
         append_to_session(session_id, user_msg)
-
-        # Load updated history (includes system prompt + all messages)
-        history = get_session_history(session_id)
 
         # 2️⃣ Setup LLM
         llm = ChatOpenAI(
@@ -59,68 +66,95 @@ async def event_generator(session_id: str, user_input: str):
         if tools_cache:
             llm = llm.bind_tools(tools_cache)
 
-        accumulated = AIMessageChunk(content="")
+        # 3️⃣ Agent Loop — keep going until GPT-4o stops calling tools
+        for round_num in range(MAX_TOOL_ROUNDS):
 
-        # 3️⃣ First Pass — stream LLM response
-        async for chunk in llm.astream(history):
-            accumulated += chunk
+            history = get_session_history(session_id)
+            accumulated = AIMessageChunk(content="")
 
-            if chunk.content:
-                yield f"data: {json.dumps({'type': 'token', 'content': chunk.content})}\n\n"
+            # Stream LLM response
+            async for chunk in llm.astream(history):
+                accumulated += chunk
+                if chunk.content:
+                    yield f"data: {json.dumps({'type': 'token', 'content': chunk.content})}\n\n"
 
-        # Convert to full AIMessage
-        first_ai_message = AIMessage(
-            content=accumulated.content,
-            tool_calls=accumulated.tool_calls
-        )
+            # Save AI message to session
+            ai_message = AIMessage(
+                content=accumulated.content,
+                tool_calls=accumulated.tool_calls
+            )
+            append_to_session(session_id, ai_message)
 
-        append_to_session(session_id, first_ai_message)
+            # If no tool calls, we're done
+            if not accumulated.tool_calls:
+                break
 
-        # 4️⃣ Handle Tool Calls
-        if accumulated.tool_calls:
-
+            # 4️⃣ Execute tool calls
             yield f"data: {json.dumps({'type': 'status', 'content': 'Using financial tools...'})}\n\n"
 
             for tc in accumulated.tool_calls:
-
                 tool_name = tc["name"]
                 tool_args = tc.get("args", {})
                 tool_id = tc["id"]
 
                 yield f"data: {json.dumps({'type': 'tool_start', 'tool': tool_name})}\n\n"
 
+                tool_output = None
+                tool_output_parsed = None
                 try:
                     if tool_name in named_tools_cache:
                         tool_output = await named_tools_cache[tool_name].ainvoke(tool_args)
-                        tool_result_content = json.dumps(tool_output)
+
+                        # MCP tools return a list of content blocks:
+                        # [{"type": "text", "text": '{"image_base64": "..."}'}]
+                        # We need to extract the text and parse it.
+                        raw_text = None
+                        if isinstance(tool_output, list) and len(tool_output) > 0:
+                            first = tool_output[0]
+                            if isinstance(first, dict) and "text" in first:
+                                raw_text = first["text"]
+                            elif isinstance(first, str):
+                                raw_text = first
+                        elif isinstance(tool_output, dict):
+                            raw_text = json.dumps(tool_output)
+                        elif isinstance(tool_output, str):
+                            raw_text = tool_output
+
+                        # Try to parse as JSON dict
+                        if raw_text:
+                            tool_result_content = raw_text
+                            try:
+                                tool_output_parsed = json.loads(raw_text)
+                            except (json.JSONDecodeError, TypeError):
+                                tool_output_parsed = None
+                        else:
+                            tool_result_content = str(tool_output)
                     else:
                         tool_result_content = json.dumps({"error": "Tool not found"})
-
                 except Exception as e:
                     tool_result_content = json.dumps({"error": str(e)})
+
+                # If the tool returned a chart image, send it as a
+                # dedicated 'chart' event so the frontend renders it as
+                # an <img> immediately — NOT as streaming text tokens.
+                if isinstance(tool_output_parsed, dict) and "image_base64" in tool_output_parsed:
+                    b64 = tool_output_parsed["image_base64"]
+                    yield f"data: {json.dumps({'type': 'chart', 'src': f'data:image/png;base64,{b64}'})}\n\n"
+                    # Tell GPT-4o the chart is already displayed.
+                    tool_result_content = json.dumps({
+                        "status": "success",
+                        "note": "Chart image has already been rendered and displayed to the user inline. Do NOT output any base64 data, markdown image links, or image URLs. Simply refer to the chart as 'the chart above' or 'the chart shown'."
+                    })
 
                 tool_msg = ToolMessage(
                     tool_call_id=tool_id,
                     content=tool_result_content
                 )
-
                 append_to_session(session_id, tool_msg)
 
                 yield f"data: {json.dumps({'type': 'tool_end', 'tool': tool_name})}\n\n"
 
-            # 5️⃣ Final Pass — stream response after tool results
-            updated_history = get_session_history(session_id)
-
-            final_accumulated = AIMessageChunk(content="")
-
-            async for chunk in llm.astream(updated_history):
-                final_accumulated += chunk
-
-                if chunk.content:
-                    yield f"data: {json.dumps({'type': 'token', 'content': chunk.content})}\n\n"
-
-            final_message = AIMessage(content=final_accumulated.content)
-            append_to_session(session_id, final_message)
+            # Loop continues — GPT-4o will see tool results and may call more tools
 
         yield f"data: {json.dumps({'type': 'done'})}\n\n"
 

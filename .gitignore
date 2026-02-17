@@ -1,4 +1,5 @@
 mcp_servers/chart_server_dev
+node_modules/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
