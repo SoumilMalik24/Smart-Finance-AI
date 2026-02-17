@@ -35,16 +35,11 @@ async def lifespan(app):
 
 app = FastAPI(title="Financial Orchestrator AI", lifespan=lifespan)
 
-# CORS: allow frontend origin (set FRONTEND_URL in Render env vars)
-allowed_origins = ["http://localhost:5173", "http://localhost:3000"]
-frontend_url = os.getenv("FRONTEND_URL")
-if frontend_url:
-    allowed_origins.append(frontend_url)
-
+# CORS: allow all origins (portfolio/demo project)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
