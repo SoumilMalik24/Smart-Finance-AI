@@ -46,7 +46,7 @@ export function MessageBubble({ role, content, charts }) {
                         {charts && charts.length > 0 && (
                             <div className="mt-4 space-y-4">
                                 {charts.map((src, idx) => (
-                                    <div key={idx} className="rounded-xl overflow-hidden border border-finance-border shadow-lg bg-white">
+                                    <div key={idx} className="rounded-xl overflow-hidden border border-finance-border shadow-lg bg-white inline-block max-w-md">
                                         <img
                                             src={src}
                                             alt={`Financial Chart ${idx + 1}`}
