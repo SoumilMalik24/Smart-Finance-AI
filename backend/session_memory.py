@@ -56,6 +56,8 @@ def append_to_session(session_id: str, message: BaseMessage):
         session_store[session_id] = [get_system_message()]
 
     session_store[session_id].append(message)
+    # Sanitize immediately after every write to prevent corrupt state accumulating
+    session_store[session_id] = sanitize_history(session_store[session_id])
     trim_history(session_id)
 
 

@@ -16,7 +16,8 @@ from langchain_core.messages import (
 from mcp_client import client
 from session_memory import (
     get_session_history,
-    append_to_session
+    append_to_session,
+    clear_session
 )
 
 tools_cache = []
@@ -170,6 +171,13 @@ async def chat(request: ChatRequest):
         event_generator(request.session_id, request.message),
         media_type="text/event-stream"
     )
+
+
+@app.delete("/clear-session/{session_id}")
+async def clear_session_endpoint(session_id: str):
+    """Reset a session's history — useful when history gets corrupted."""
+    clear_session(session_id)
+    return {"status": "cleared", "session_id": session_id}
 
 
 if __name__ == "__main__":
