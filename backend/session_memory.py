@@ -56,8 +56,6 @@ def append_to_session(session_id: str, message: BaseMessage):
         session_store[session_id] = [get_system_message()]
 
     session_store[session_id].append(message)
-    # Sanitize immediately after every write to prevent corrupt state accumulating
-    session_store[session_id] = sanitize_history(session_store[session_id])
     trim_history(session_id)
 
 
@@ -68,7 +66,7 @@ def trim_history(session_id: str):
         system_msg = history[0]
         trimmed = [system_msg] + history[-(MAX_MESSAGES - 1):]
         # Sanitize after trimming to remove any newly orphaned ToolMessages
-        session_store[session_id] = sanitize_history(trimmed)
+        session_store[session_id] = trimmed
 
 
 def clear_session(session_id: str):
