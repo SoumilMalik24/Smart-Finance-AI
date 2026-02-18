@@ -8,17 +8,39 @@ MAX_MESSAGES = 20  # Prevent token explosion
 
 
 def sanitize_history(history: List[BaseMessage]) -> List[BaseMessage]:
-    """Remove orphaned ToolMessages that have no preceding AIMessage with tool_calls.
-    OpenAI rejects requests where a ToolMessage isn't preceded by a tool_calls AIMessage.
+    """Ensure every AIMessage with tool_calls has ALL its ToolMessages, and
+    every ToolMessage has a preceding AIMessage with tool_calls.
+
+    OpenAI throws 400 errors in both directions:
+    - AIMessage with tool_calls not followed by matching ToolMessages
+    - ToolMessage not preceded by an AIMessage with tool_calls
     """
-    clean = []
+    # Pass 1: find all tool_call_ids that have a ToolMessage response
+    responded_ids: set = set()
     for msg in history:
         if isinstance(msg, ToolMessage):
-            # Only keep if the previous message is an AIMessage with tool_calls
-            if clean and isinstance(clean[-1], AIMessage) and clean[-1].tool_calls:
+            responded_ids.add(msg.tool_call_id)
+
+    # Pass 2: rebuild history, skipping broken groups
+    clean = []
+    last_tool_ai: AIMessage | None = None  # track last AIMessage with tool_calls
+
+    for msg in history:
+        if isinstance(msg, AIMessage) and msg.tool_calls:
+            # Only keep if ALL tool_calls have a matching ToolMessage response
+            all_responded = all(tc["id"] in responded_ids for tc in msg.tool_calls)
+            if all_responded:
                 clean.append(msg)
-            # Otherwise drop the orphaned ToolMessage silently
+                last_tool_ai = msg
+            else:
+                last_tool_ai = None  # drop this group
+        elif isinstance(msg, ToolMessage):
+            # Only keep if there's a valid preceding AIMessage with tool_calls
+            if last_tool_ai is not None:
+                clean.append(msg)
+            # else: orphaned ToolMessage — drop it
         else:
+            last_tool_ai = None  # reset on any non-tool message
             clean.append(msg)
     return clean
 
